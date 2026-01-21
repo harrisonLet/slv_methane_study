@@ -56,36 +56,29 @@ import folium
 import folium.plugins.timeline
 import branca.colormap as cm
 
+from data_ag import read_aeris, read_uwml, merge_datasets
+
 
 def main():
 
-    arc_dates = [20240716, 20240717, 20240718, 20240719, 20240721, 20240722, 20240723,
-                 20240725, 20240726, 20240727, 20240728, 20240729, 20240730, 20240731,
-                 20240802, 20240803, 20240804]
-
-    for arcdate in arc_dates:
-        file_name = f"arc_raw/USOS-ARL-Suite_ARC_{arcdate}_RA.ict"
-
         # Pandas dataframe
-        arc_data = arc_data_dataframe(file_name)
+        aeris_df = read_aeris("data/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt")
 
-        print(f"Generated folium mapping for: {arcdate}")
+        uwml_df = read_uwml("data/exampleData/20240801SLCData/SprinterMet/UWTR_WX_Sprinter_20240801_151844.csv")
 
-        # ARC map with car path
-        m = arc_map(arc_data, file_name)
+        df = merge_datasets(aeris_df, uwml_df)
+
+        # Generate folium mapping with lab track
+        m = arc_map(df)
+
 
         # Add Layers
-        add_layer(m, arc_data, 'CH4_aeris313_ppm')
-        add_layer(m, arc_data, 'H2O_aeris313_ppm')
-        add_layer(m, arc_data, 'CO2_g2401m_ppm')
-        add_layer(m, arc_data, 'alt_msl_m')
+        add_layer(m, df, 'CH4 (ppm)')
+        add_layer(m, df, 'C2H6 (ppb)')
 
-        add_layer(m, arc_data, 'C2H6_aeris313_ppb')
-        add_layer(m, arc_data, 'C2C1_aeris313')
-        add_layer(m, arc_data, 'delta13C_CH4_raw')
 
         # Add Vector map
-        add_vector_map(m, arc_data, 'true_WS_m_s')
+        # add_vector_map(m, arc_data, 'true_WS_m_s')
 
         # Add layer control
         folium.LayerControl().add_to(m)
@@ -99,10 +92,6 @@ def main():
             z-index: 9999;
             text-align: center;
         ">
-            <img src="https://csl.noaa.gov/groups/csl7/measurements/2024usos/images/logos/usos_logo.png"
-                 alt="USOS Logo"
-                 width="110px"
-                 style="display:block; margin-bottom:5px;">
 
             <div style="
                 font-size: 19px;
@@ -111,7 +100,7 @@ def main():
                 padding: 4px 8px;
                 border-radius: 4px;
          ">
-                <span style="color:#da8322;">{arcdate}</span> 
+                <span style="color:#da8322;">EXAMPLE</span> 
             </div>
         </div>
         """
@@ -121,7 +110,7 @@ def main():
 
         print("Generating html file...")
 
-        filesave = f"arc_mapping/arc_data_mapping_{arcdate}.html"
+        filesave = f"output/scrap/exampleData_map.html"
 
         # Save to html
         m.save(filesave)
@@ -160,17 +149,16 @@ def arc_data_dataframe(filepath):
 
     return df
 
-def arc_map(ds, filename):
+def arc_map(df):
     """
     Creates a folium map from a Pandas DataFrame.
     Adds satellite, topo, street map.
     """
 
-    print(f'Reading {filename}...')
 
     #Retrieve lat and lon data cols
-    lat_col = ds['lat_DGPS_deg']
-    lon_col = ds['lon_DGPS_deg']
+    lat_col = df['Latitude (DD.ddd +N)']
+    lon_col = df['Longitude (DDD.ddd -W)']
 
     #Transform to tuples for folium
     coords = list(zip(lat_col, lon_col))
@@ -209,8 +197,6 @@ def add_layer(map_obj, df, column):
     if df[column].isna().all():
         return
 
-    print(f"Adding layer {column}...")
-
     layer = folium.FeatureGroup(name=column, control=True, show=False)
 
     # Clean dataframe for Nan
@@ -231,8 +217,8 @@ def add_layer(map_obj, df, column):
     linear.caption = column
 
     # Retrieve lat and lon data cols
-    lat_col = clean_df['lat_DGPS_deg']
-    lon_col = clean_df['lon_DGPS_deg']
+    lat_col = clean_df['Latitude (DD.ddd +N)']
+    lon_col = clean_df['Longitude (DDD.ddd -W)']
 
     # Transform to tuples for folium
     coords = list(zip(lat_col, lon_col))

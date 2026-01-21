@@ -58,7 +58,7 @@ def read_aeris(filename):
         return pd.DataFrame()
 
 
-def read_uwml_wx(filename):
+def read_uwml(filename):
     """
     Read UWML WX mobile weather station data.
     
@@ -74,7 +74,7 @@ def read_uwml_wx(filename):
     """
     try:
         # Skip the 3 header rows
-        df = pd.read_csv(filename, skiprows=3)
+        df = pd.read_csv(filename, skiprows=3, index_col=False)
         
 
         """
@@ -89,8 +89,9 @@ def read_uwml_wx(filename):
             dt_string = date + time  # YYYYMMDDHHMMSS
             return datetime.strptime(dt_string, '%Y%m%d%H%M%S')
 
-        df.index = df.index.map(parse_uwml_timestamp)
-        df.index.name = 'TIMESTAMP'
+        df['PC'] = df['PC'].apply(parse_uwml_timestamp)
+        df.rename(columns={'PC': 'TIMESTAMP'}, inplace=True)
+        df.set_index('TIMESTAMP', inplace=True)
         df.sort_index(inplace=True)
 
         df = df.drop(columns=["UTC hhmmss", "UTC Year", "UTC Month", "UTC Day"])
@@ -129,7 +130,7 @@ def load_data(aeris_file, uwml_file):
 
     if uwml_file:
         print(f"Loading UWML WX: {Path(uwml_file).name}")
-        data['uwml'] = read_uwml_wx(uwml_file)
+        data['uwml'] = read_uwml(uwml_file)
     
     return data
 
@@ -179,7 +180,7 @@ if __name__ == "__main__":
     
     # Single file loading
     # aeris = read_aeris("/Users/harrisonletourneau/Desktop/lair/slv_methane_study/data/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt")
-    # sprinter = read_sprinter_wx("data/exampleData/20240801SLCData/SprinterMet/UWTR_WX_Sprinter_20240801_151844.csv")
+    # sprinter = read_uwml("data/exampleData/20240801SLCData/SprinterMet/UWTR_WX_Sprinter_20240801_151844.csv")
     
     data = load_data(
         aeris_file="data/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt",
@@ -188,9 +189,22 @@ if __name__ == "__main__":
     
     print("\nAeris columns:", data['aeris'].columns.tolist()[:5])
     print("UWML columns:", data['uwml'].columns.tolist()[:5])
+
+    data['aeris'].to_csv('output/scrap/aeris.csv')
+    data['uwml'].to_csv('output/scrap/uwml.csv')
+
+    print(data['uwml'].head())
+
     
     # Merge
     if 'aeris' in data and 'uwml' in data:
         if not data['aeris'].empty and not data['uwml'].empty:
             merged = merge_datasets(data['aeris'], data['uwml'])
             print("\nMerged data shape:", merged.shape)
+
+    # View in excel
+    merged.to_csv('output/scrap/preview.csv')
+
+
+    
+
