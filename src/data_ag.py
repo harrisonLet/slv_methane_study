@@ -17,7 +17,7 @@ def read_aeris(filename):
     Parameters
 
     filename : str
-        Path to Aeris .txt file (eg - slv_methane_study/data/raw/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt)
+        Path to Aeris .txt file
     
     Returns
 
@@ -25,7 +25,7 @@ def read_aeris(filename):
 
         DataFrame with datetime index and gas measurements
 
-    NOTE: Pulling X Y Z Columns
+    NOTE: Pulling ALL Columns
     """
     try:
         # Read CSV, skip the last row
@@ -38,120 +38,130 @@ def read_aeris(filename):
         )
         
         # Parse timestamp, Aeries Format (08/01/2024 18:15:45.025)
-        df['Time Stamp'] = pd.to_datetime(
+        df['TIMESTAMP'] = pd.to_datetime(
             df['Time Stamp'], 
             format='%m/%d/%Y %H:%M:%S.%f',
             errors='coerce'
         )
         
         # Set as index and sort
-        df.set_index('Time Stamp', inplace=True)
+        df.set_index('TIMESTAMP', inplace=True)
         df.sort_index(inplace=True)
         
         print(f"Loaded Aeris: {len(df)} records")
+        
         return df
 
-
-        print df.columns.tolist()
         
     except Exception as e:
-        print(f"✗ Error reading Aeris file {filename}: {e}")
+        print(f"Error reading Aeris file {filename}: {e}")
         return pd.DataFrame()
 
 
-def read_sprinter_wx(filename):
+def read_uwml_wx(filename):
     """
-    Read Sprinter WX mobile weather station data.
+    Read UWML WX mobile weather station data.
     
-    Parameters:
-    -----------
+    Parameters
+
     filename : str
-        Path to Sprinter WX .csv file (e.g., "UWTR_WX_Sprinter_20240801_151844.csv")
+        Path to UWML WX .csv file
     
-    Returns:
-    --------
+    Returns
+
     pd.DataFrame
-        DataFrame with datetime index and weather measurements
+        DataFrame with datetime index and met data
     """
     try:
         # Skip the 3 header rows
         df = pd.read_csv(filename, skiprows=3)
         
-        # Parse the custom timestamp format: 151845*20240801
-        # Format is HHMMSS*YYYYMMDD
-        def parse_timestamp(pc_time):
-            time_part = pc_time.split('*')[0]  # HHMMSS
-            date_part = pc_time.split('*')[1]  # YYYYMMDD
+
+        """
+        Parse the custom timestamp format
+        Format is HHMMSS*YYYYMMDD
+        """
+        def parse_uwml_timestamp(pc_time):
+            pc_time = str(pc_time)
+            time = pc_time.split('*')[0]  # HHMMSS
+            date = pc_time.split('*')[1]  # YYYYMMDD
             
-            dt_string = date_part + time_part  # YYYYMMDDHHMMSS
+            dt_string = date + time  # YYYYMMDDHHMMSS
             return datetime.strptime(dt_string, '%Y%m%d%H%M%S')
-        
-        df['TIMESTAMP'] = df['PC'].apply(parse_timestamp)
-        df.set_index('TIMESTAMP', inplace=True)
+
+        df.index = df.index.map(parse_uwml_timestamp)
+        df.index.name = 'TIMESTAMP'
         df.sort_index(inplace=True)
+
+        df = df.drop(columns=["UTC hhmmss", "UTC Year", "UTC Month", "UTC Day"])
         
-        print(f"✓ Loaded Sprinter WX: {len(df)} records")
+        print(f"Loaded UWML WX: {len(df)} records")
+
         return df
         
     except Exception as e:
-        print(f"✗ Error reading Sprinter WX file {filename}: {e}")
+        print(f"Error reading UWML WX file {filename}: {e}")
         return pd.DataFrame()
 
 
-def load_data(aeris_file=None, sprinter_file=None):
+def load_data(aeris_file, uwml_file):
     """
-    Load both Aeris and Sprinter WX data.
+    Load both Aeris and UWML WX data.
     
-    Parameters:
-    -----------
-    aeris_file : str, optional
+    Parameters
+
+        aeris_file : str
         Path to Aeris file
-    sprinter_file : str, optional
-        Path to Sprinter WX file
+
+        uwml_file : str
+        Path to UWML WX file
     
-    Returns:
-    --------
-    dict
-        Dictionary with keys 'aeris' and 'sprinter' containing DataFrames
+    Returns
+    
+        dict
+        Dictionary with keys 'aeris' and 'uwml' containing DataFrames
     """
     data = {}
     
     if aeris_file:
         print(f"Loading Aeris: {Path(aeris_file).name}")
         data['aeris'] = read_aeris(aeris_file)
-    
-    if sprinter_file:
-        print(f"Loading Sprinter WX: {Path(sprinter_file).name}")
-        data['sprinter'] = read_sprinter_wx(sprinter_file)
+
+    if uwml_file:
+        print(f"Loading UWML WX: {Path(uwml_file).name}")
+        data['uwml'] = read_uwml_wx(uwml_file)
     
     return data
 
 
-def merge_datasets(aeris_df, sprinter_df, method='nearest', tolerance='1s'):
+def merge_datasets(aeris_df, uwml_df, method='nearest', tolerance='1s'):
     """
-    Merge Aeris and Sprinter WX data by timestamp.
+    Merge Aeris and UWML WX data by timestamp.
     
-    Parameters:
-    -----------
-    aeris_df : pd.DataFrame
-        Aeris data with datetime index
-    sprinter_df : pd.DataFrame
-        Sprinter WX data with datetime index
+    Parameters
+    
+        aeris_df : pd.DataFrame
+        Aeris data with datetime type index
+
+    uwml_df : pd.DataFrame
+        UWML WX data with datetime type index
+
     method : str
-        Merge method: 'nearest', 'forward', 'backward' (default: 'nearest')
+        Merge method: 'nearest', 'forward', 'backward'
+
     tolerance : str
-        Maximum time difference for matching (default: '1s')
+        Maximum time difference for matching
     
-    Returns:
-    --------
-    pd.DataFrame
+    Returns
+    
+        pd.DataFrame
         Merged dataset with both instruments' data
     """
     # Use pandas merge_asof for time-series alignment
     merged = pd.merge_asof(
-        aeris_df.reset_index().sort_values('Time Stamp'),
-        sprinter_df.reset_index().sort_values('TIMESTAMP'),
-        left_on='Time Stamp',
+        aeris_df.reset_index().sort_values('TIMESTAMP'),
+        uwml_df.reset_index().sort_values('TIMESTAMP'),
+        left_on='TIMESTAMP',
         right_on='TIMESTAMP',
         direction=method,
         tolerance=pd.Timedelta(tolerance),
@@ -159,31 +169,28 @@ def merge_datasets(aeris_df, sprinter_df, method='nearest', tolerance='1s'):
     )
     
     # Set timestamp as index
-    merged.set_index('Time Stamp', inplace=True)
-    
-    print(f"✓ Merged dataset: {len(merged)} records")
+    merged.set_index('TIMESTAMP', inplace=True)
+
+    print(f"Merged dataset: {len(merged)} records")
     return merged
 
 
-# Example usage
 if __name__ == "__main__":
     
     # Single file loading
-    aeris = read_aeris("slv_methane_study/data/raw/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt")
-    # sprinter = read_sprinter_wx("UWTR_WX_Sprinter_20240801_151844.csv")
+    # aeris = read_aeris("/Users/harrisonletourneau/Desktop/lair/slv_methane_study/data/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt")
+    # sprinter = read_sprinter_wx("data/exampleData/20240801SLCData/SprinterMet/UWTR_WX_Sprinter_20240801_151844.csv")
     
-    # Or load both at once
-    # data = load_data(
-    #     aeris_file="Ultra100460_240801_181546Eng.txt",
-    #     sprinter_file="UWTR_WX_Sprinter_20240801_151844.csv"
-    # )
+    data = load_data(
+        aeris_file="data/exampleData/20240801SLCData/Aeris/Ultra100460_240801_181546Eng.txt",
+        uwml_file="data/exampleData/20240801SLCData/SprinterMet/UWTR_WX_Sprinter_20240801_151844.csv"
+    )
     
-    # Access the data
-    # print("\nAeris columns:", data['aeris'].columns.tolist()[:5])
-    # print("Sprinter columns:", data['sprinter'].columns.tolist()[:5])
+    print("\nAeris columns:", data['aeris'].columns.tolist()[:5])
+    print("UWML columns:", data['uwml'].columns.tolist()[:5])
     
-    # Merge if both exist
-    # if 'aeris' in data and 'sprinter' in data:
-    #     if not data['aeris'].empty and not data['sprinter'].empty:
-    #         merged = merge_datasets(data['aeris'], data['sprinter'])
-    #         print("\nMerged data shape:"cd, merged.shape)
+    # Merge
+    if 'aeris' in data and 'uwml' in data:
+        if not data['aeris'].empty and not data['uwml'].empty:
+            merged = merge_datasets(data['aeris'], data['uwml'])
+            print("\nMerged data shape:", merged.shape)
